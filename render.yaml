@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: telegram-echo
+    runtime: python
+    plan: free
+    buildCommand: uv sync --locked
+    startCommand: uv run uvicorn main:app --host 0.0.0.0 --port $PORT
