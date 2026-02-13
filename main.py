@@ -26,6 +26,7 @@ class TelegramEchoBot:
        
     async def set_webhook(self, url: str):
         await self._application.bot.set_webhook(url=url, allowed_updates=Update.ALL_TYPES)
+        await self._application.initialize()
         await self._application.start()
 
     async def post_update(self, data: JSONDict):
@@ -35,6 +36,7 @@ class TelegramEchoBot:
 
     async def shutdown(self) -> None:
         await self._application.stop()
+        await self._application.shutdown()
 
     async def _start_handler(self, update: Update, context: CallbackContext) -> None:
         await update.message.reply_html(text="Welcome to my echo bot!")
