@@ -13,11 +13,6 @@ from telegram._utils.types import JSONDict
 
 TOKEN = "8280789096:AAEodpQBjc11bjQxMm6J95zmn3eO9eG9EnA"
 
-@dataclass
-class WebhookUpdate:
-    user_id: int
-    payload: str
-
 class TelegramEchoBot:
     def __init__(self):
         self._application = Application.builder().token(TOKEN).updater(None).build()
@@ -25,9 +20,12 @@ class TelegramEchoBot:
         self._application.add_handler(TypeHandler(type=WebhookUpdate, callback=self._update_handler))
        
     async def set_webhook(self, url: str):
-        await self._application.bot.set_webhook(url=url, allowed_updates=Update.ALL_TYPES)
-        await self._application.initialize()
-        await self._application.start()
+        if not self._application.running:
+            await self._application.bot.set_webhook(url=url, allowed_updates=Update.ALL_TYPES)
+            await self._application.initialize()
+            await self._application.start()
+        
+        return self._application.bot.get_webhook_info()
 
     async def post_update(self, data: JSONDict):
         await self._application.update_queue.put(
@@ -35,16 +33,17 @@ class TelegramEchoBot:
         )
 
     async def shutdown(self) -> None:
-        await self._application.stop()
-        await self._application.shutdown()
+        if self._application.running:
+            await self._application.stop()
+            await self._application.shutdown()
 
     async def _start_handler(self, update: Update, context: CallbackContext) -> None:
-        await update.message.reply_html(text="Welcome to my echo bot!")
+        if update.message:
+            await update.message.reply_html(text="Welcome to my echo bot!")
 
-    async def _update_handler(self, update: WebhookUpdate, context: CallbackContext) -> None:
-        user_id = update.user_id
-        payload = update.payload
-        await context.bot.send_message(chat_id=user_id, text=payload, parse_mode=ParseMode.HTML)
+    async def _update_handler(self, update: Update, context: CallbackContext) -> None:
+        if update.message:
+            await update.message.reply_html(text=update.message.text)
 
 class KeepAlive:
     _timer: threading.Timer | None = None
@@ -89,10 +88,10 @@ templates = Jinja2Templates(directory="templates")
 async def get_root(request: Request):
     url = str(request.url)
     
-    success = await app.state.telegram_bot.set_webhook(url)
+    url = await app.state.telegram_bot.set_webhook(url)
     
     return templates.TemplateResponse(
-        request=request, name="Index.html.j2", context={"url": url, "success": success}
+        request=request, name="Index.html.j2", context={"url": url}
     )
 
 @app.post("/")
@@ -104,4 +103,4 @@ async def post_root(request: Request):
 @app.get("/ping")
 async def ping(request: Request):
     request.app.state.keep_alive.arm(str(request.url))
-    return {"success": True}
+    return Response()
