@@ -1,14 +1,14 @@
+from typing import Any
+
 import threading
 import requests
-from dataclasses import dataclass
 
 from fastapi import FastAPI, Request, Response
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
 
 from telegram import Update
-from telegram.constants import ParseMode
-from telegram.ext import Application, CallbackContext, CommandHandler, TypeHandler
+from telegram.ext import Application, CallbackContext, CommandHandler, MessageHandler
 from telegram._utils.types import JSONDict
 
 TOKEN = "8280789096:AAEodpQBjc11bjQxMm6J95zmn3eO9eG9EnA"
@@ -17,7 +17,7 @@ class TelegramEchoBot:
     def __init__(self):
         self._application = Application.builder().token(TOKEN).updater(None).build()
         self._application.add_handler(CommandHandler("start", self._start_handler))
-        self._application.add_handler(TypeHandler(type=WebhookUpdate, callback=self._update_handler))
+        self._application.add_handler(MessageHandler(None, self._message_handler))
        
     async def set_webhook(self, url: str):
         if not self._application.running:
@@ -37,14 +37,13 @@ class TelegramEchoBot:
             await self._application.stop()
             await self._application.shutdown()
 
-    async def _start_handler(self, update: Update, context: CallbackContext) -> None:
+    async def _start_handler(self, update: Update, _: CallbackContext[Any, Any, Any, Any]) -> None:
         if update.message:
             await update.message.reply_html(text="Welcome to my echo bot!")
 
-    async def _update_handler(self, update: Update, context: CallbackContext) -> None:
-        if update.message:
+    async def _message_handler(self, update: Update, _: CallbackContext[Any, Any, Any, Any]) -> None:
+        if update.message and update.message.text:
             await update.message.reply_html(text=update.message.text)
-
 class KeepAlive:
     _timer: threading.Timer | None = None
     _period_sec: float | None = None
