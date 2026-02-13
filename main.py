@@ -23,12 +23,10 @@ class TelegramEchoBot:
         self._application = Application.builder().token(TOKEN).updater(None).build()
         self._application.add_handler(CommandHandler("start", self._start_handler))
         self._application.add_handler(TypeHandler(type=WebhookUpdate, callback=self._update_handler))
-    
-    async def start(self):
+       
+    async def set_webhook(self, url: str):
+        await self._application.bot.set_webhook(url=url, allowed_updates=Update.ALL_TYPES)
         await self._application.start()
-    
-    async def set_webhook(self, url: str) -> bool:
-        return await self._application.bot.set_webhook(url=url, allowed_updates=Update.ALL_TYPES)
 
     async def post_update(self, data: JSONDict):
         await self._application.update_queue.put(
@@ -36,7 +34,7 @@ class TelegramEchoBot:
         )
 
     async def shutdown(self) -> None:
-        await self._application.shutdown()
+        await self._application.stop()
 
     async def _start_handler(self, update: Update, context: CallbackContext) -> None:
         await update.message.reply_html(text="Welcome to my echo bot!")
@@ -77,7 +75,6 @@ class KeepAlive:
 async def lifespan(app: FastAPI):
     app.state.keep_alive = KeepAlive()
     app.state.telegram_bot = TelegramEchoBot()
-    await app.state.telegram_bot.start()
     yield
     await app.state.telegram_bot.shutdown()
     app.state.keep_alive.shutdown()
