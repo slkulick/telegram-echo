@@ -7,7 +7,8 @@ from fastapi import FastAPI, Request, Response, Form, status
 from fastapi.responses import RedirectResponse, PlainTextResponse
 
 from fastapi.templating import Jinja2Templates
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from operator import attrgetter
 
 from telegram import Update
 from telegram.ext import Application, CallbackContext, CommandHandler, MessageHandler
@@ -15,10 +16,13 @@ from telegram._utils.types import JSONDict
 
 class TelegramEchoBot:
     _application: Application[Any, Any, Any, Any, Any, Any] | None = None
-    def __init__(self):
-        pass
+    _signup_phrase: str = ""
+    _allow_list: list[str]
 
-    async def configure(self, token: str, url: str, _: str = ""):
+    def __init__(self):
+        self._allow_list = []
+
+    async def configure(self, token: str, url: str, phrase: str = ""):
         if self._application is None:
             self._application = Application.builder().token(token).updater(None).build()
             self._application.add_handler(CommandHandler("start", self._start_handler))
@@ -29,6 +33,8 @@ class TelegramEchoBot:
             await self._application.initialize()
             await self._application.start()
         
+        self._signup_phrase = phrase
+
         info = await self._application.bot.get_webhook_info()
         return info.url
 
@@ -55,12 +61,28 @@ class TelegramEchoBot:
         await app.shutdown()
 
     async def _start_handler(self, update: Update, _: CallbackContext[Any, Any, Any, Any]) -> None:
-        if update.message:
-            await update.message.reply_text(text="Welcome to my echo bot!")
+        retriever = attrgetter("message", "message.text", "message.from_user.id")
+
+        try:
+            message, _, user_id = retriever(update)
+        except AttributeError:
+            return
+        
+        if user_id in self._allow_list:
+            await message.reply_text(text="Welcome to my echo bot!")
 
     async def _message_handler(self, update: Update, _: CallbackContext[Any, Any, Any, Any]) -> None:
-        if update.message and update.message.text:
-            await update.message.reply_text(text=update.message.text)
+        retriever = attrgetter("message", "message.text", "message.from_user.id")
+
+        try:
+            message, text, user_id = retriever(update)
+        except AttributeError:
+            return
+
+        if user_id in self._allow_list:
+            await message.reply_text(text=text)
+        elif text == self._signup_phrase:
+            self._allow_list.append(user_id)
 
 class KeepAlive:
     _timer: threading.Timer | None = None
