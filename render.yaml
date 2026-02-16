@@ -3,5 +3,6 @@ services:
     name: telegram-echo
     runtime: python
     plan: free
+    healthCheckPath: /health
     buildCommand: uv sync --locked
     startCommand: uv run uvicorn main:app --host 0.0.0.0 --port $PORT

@@ -6,6 +6,25 @@
   </head>
   <body>
     <h1>Telegram Echo Bot</h1>
-    <p>Webhook URL: {{ url }}</p>
+
+    {% if is_running %}
+    <p>Application is running.</p>
+    {% else %}
+    <form action="/configure" method="post">
+      <p>
+        <label for="url">Webhook url:</label>
+        <input type="text" id="url" name="url" value="{{ url }}">
+      </p>
+      <p>
+        <label for="token">Telegram Bot Token:</label>
+        <input type="text" id="token" name="token">
+      </p>
+      <p>
+        <label for="passphrase">Signup Pass Phrase:</label>
+        <input type="text" id="passphrase" name="passphrase">
+      </p>
+      <input type="submit" value="Activate">
+    </form>
+    {% endif %}
   </body>
 </html>

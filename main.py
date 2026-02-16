@@ -1,9 +1,10 @@
-from typing import Any
+from typing import Annotated, Any
 
 import threading
 import requests
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Form
+from fastapi.responses import RedirectResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
 
@@ -11,39 +12,55 @@ from telegram import Update
 from telegram.ext import Application, CallbackContext, CommandHandler, MessageHandler
 from telegram._utils.types import JSONDict
 
-TOKEN = "8280789096:AAEodpQBjc11bjQxMm6J95zmn3eO9eG9EnA"
-
 class TelegramEchoBot:
+    _application: Application[Any, Any, Any, Any, Any, Any] | None = None
     def __init__(self):
-        self._application = Application.builder().token(TOKEN).updater(None).build()
-        self._application.add_handler(CommandHandler("start", self._start_handler))
-        self._application.add_handler(MessageHandler(None, self._message_handler))
-       
-    async def set_webhook(self, url: str):
+        pass
+
+    async def configure(self, token: str, url: str, _: str = ""):
+        if self._application is None:
+            self._application = Application.builder().token(token).updater(None).build()
+            self._application.add_handler(CommandHandler("start", self._start_handler))
+            self._application.add_handler(MessageHandler(None, self._message_handler))
+
         if not self._application.running:
             await self._application.bot.set_webhook(url=url, allowed_updates=Update.ALL_TYPES)
             await self._application.initialize()
             await self._application.start()
         
-        return self._application.bot.get_webhook_info()
+        info = await self._application.bot.get_webhook_info()
+        return info.url
+
+    def get_running_app(self) -> Application[Any, Any, Any, Any, Any, Any]:
+        if self._application is None:
+            raise RuntimeError("Application is not configured!")
+    
+        if not self._application.running:
+            raise RuntimeError("Application is not running!")
+
+        return self._application
 
     async def post_update(self, data: JSONDict):
-        await self._application.update_queue.put(
-            Update.de_json(data=data, bot=self._application.bot)
+        app = self.get_running_app()
+
+        await app.update_queue.put(
+            Update.de_json(data=data, bot=app.bot)
         )
 
     async def shutdown(self) -> None:
-        if self._application.running:
-            await self._application.stop()
-            await self._application.shutdown()
+        app = self.get_running_app()
+
+        await app.stop()
+        await app.shutdown()
 
     async def _start_handler(self, update: Update, _: CallbackContext[Any, Any, Any, Any]) -> None:
         if update.message:
-            await update.message.reply_html(text="Welcome to my echo bot!")
+            await update.message.reply_text(text="Welcome to my echo bot!")
 
     async def _message_handler(self, update: Update, _: CallbackContext[Any, Any, Any, Any]) -> None:
         if update.message and update.message.text:
-            await update.message.reply_html(text=update.message.text)
+            await update.message.reply_text(text=update.message.text)
+
 class KeepAlive:
     _timer: threading.Timer | None = None
     _period_sec: float | None = None
@@ -87,10 +104,14 @@ templates = Jinja2Templates(directory="templates")
 async def get_root(request: Request):
     url = str(request.url)
     
-    url = await app.state.telegram_bot.set_webhook(url)
-    
+    is_running = True
+    try:
+        app.state.telegram_bot.get_running_app()
+    except RuntimeError:
+        is_running = False
+
     return templates.TemplateResponse(
-        request=request, name="Index.html.j2", context={"url": url}
+        request=request, name="Index.html.j2", context={"url": url, "is_running": is_running}
     )
 
 @app.post("/")
@@ -98,6 +119,15 @@ async def post_root(request: Request):
     data = await request.json()
     await app.state.telegram_bot.post_update(data)
     return Response()
+
+@app.post("/configure")
+async def post_configure(request: Request, url: Annotated[str, Form()], token: Annotated[str, Form()], passphrase: Annotated[str, Form()] = ""):
+    await app.state.telegram_bot.configure(token, url, passphrase)
+    return RedirectResponse("/")
+
+@app.get("/health")
+async def health():
+    return PlainTextResponse(content="App is running fine :)")
 
 @app.get("/ping")
 async def ping(request: Request):
