@@ -3,8 +3,9 @@ from typing import Annotated, Any
 import threading
 import requests
 
-from fastapi import FastAPI, Request, Response, Form
+from fastapi import FastAPI, Request, Response, Form, status
 from fastapi.responses import RedirectResponse, PlainTextResponse
+
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
 
@@ -104,6 +105,8 @@ templates = Jinja2Templates(directory="templates")
 async def get_root(request: Request):
     url = str(request.url)
     
+    request.app.state.keep_alive.arm(url + "/ping")
+
     is_running = True
     try:
         app.state.telegram_bot.get_running_app()
@@ -123,7 +126,9 @@ async def post_root(request: Request):
 @app.post("/configure")
 async def post_configure(request: Request, url: Annotated[str, Form()], token: Annotated[str, Form()], passphrase: Annotated[str, Form()] = ""):
     await app.state.telegram_bot.configure(token, url, passphrase)
-    return RedirectResponse("/")
+    # Use `status_code=status.HTTP_303_SEE_OTHER` to redirect using the HTTP GET verb instead of POST. See:
+    # https://github.com/fastapi/fastapi/issues/1498
+    return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.get("/health")
 async def health():
